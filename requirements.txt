@@ -4,3 +4,8 @@ torchaudio==2.5.1+cu124 --index-url https://download.pytorch.org/whl/cu124
 transformers
 datasets
 evaluate
+sentencepiece
+sacrebleu
+pandas
+tree_sitter==0.2.0
+
