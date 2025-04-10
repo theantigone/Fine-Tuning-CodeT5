@@ -68,12 +68,12 @@ model.
 
 Navigate to the ```src``` directory, then run:
 ```shell
-(venv) ~/Fine-Tuning-CodeT5/src $ python CodeT5_CTransl.py <folder>
+(venv) ~/Fine-Tuning-CodeT5/src $ python fine-tuning.py
 ```
 
 ## 3. Report
 
-The assignment report is available inside the **reports** folder named **Assignment_Report.pdf**.
+The assignment report is available inside the ``reports`` folder named ``Assignment_Report.pdf``.
 
 
 
