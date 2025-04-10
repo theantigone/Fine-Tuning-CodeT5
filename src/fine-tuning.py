@@ -19,16 +19,22 @@ from transformers import T5ForConditionalGeneration, RobertaTokenizer, Trainer, 
 from datasets import Dataset, DatasetDict
 import evaluate
 
+print("Starting the fine-tuning pipeline...")
+
 # ------------------------------
 # Step 3: Load CSV Files
 # ------------------------------
+print("Step 3: Loading CSV files...")
 train_df = pd.read_csv("../data/raw/ft_train.csv")
 val_df = pd.read_csv("../data/raw/ft_valid.csv")
 test_df = pd.read_csv("../data/raw/ft_test.csv")
+print("CSV files loaded successfully.")
 
 # ------------------------------
 # Step 4: Mask if Conditions & Flatten Code
 # ------------------------------
+print("Step 4: Masking 'if' conditions and flattening code...")
+
 def flatten_code(code):
     return " ".join(code.split())
 
@@ -43,9 +49,8 @@ def generate_pattern(target):
     return pattern
 
 def mask_if_conditions(df, df_name="dataset"):
+    print(f"Processing {df_name} dataset...")
     masked_data = []
-    # Limit to first two rows (per your original design)
-    #df = df.head(6)
     for idx, row in df.iterrows():
         function_code = row['cleaned_method']
         target_if_condition = row['target_block']
@@ -58,16 +63,6 @@ def mask_if_conditions(df, df_name="dataset"):
         flattened_func = flatten_code(function_code)
         pattern = generate_pattern(raw_condition)
 
-         # Debugging: Display the generated regex pattern and the flattened function code
-        #print(f"[{df_name} row {idx}] Generated regex pattern: {pattern}")
-        #print(f"[{df_name} row {idx}] Flattened function code: {flattened_func}")
-
-         # Check if the pattern exists in the flattened function code
-        #if re.search(pattern, flattened_func):
-        #    print(f"[{df_name} row {idx}] Pattern found in function code.")
-        #else:
-        #    print(f"[{df_name} row {idx}] Pattern NOT found in function code.")
-
         masked_func, count = re.subn(pattern, "<mask>:", flattened_func, count=1)
         if count == 0:
             print(f"[{df_name} row {idx}] Warning: Condition not found or not replaced")
@@ -78,15 +73,20 @@ def mask_if_conditions(df, df_name="dataset"):
             'target': raw_condition,
             'original_function': function_code
         })
+        if idx % 100 == 0:
+            print(f"Processed {idx} rows in {df_name} dataset.")
+    print(f"Completed processing {df_name} dataset.")
     return pd.DataFrame(masked_data)
 
 masked_train_df = mask_if_conditions(train_df, df_name="train")
 masked_val_df = mask_if_conditions(val_df, df_name="val")
 masked_test_df = mask_if_conditions(test_df, df_name="test")
+print("Masking and flattening completed.")
 
 # ------------------------------
 # Step 5: Convert to Hugging Face Datasets
 # ------------------------------
+print("Step 5: Converting to Hugging Face datasets...")
 hf_train = Dataset.from_pandas(masked_train_df[['masked_input', 'target']])
 hf_val = Dataset.from_pandas(masked_val_df[['masked_input', 'target']])
 hf_test = Dataset.from_pandas(masked_test_df[['masked_input', 'target']])
@@ -96,17 +96,22 @@ dataset = DatasetDict({
     "validation": hf_val,
     "test": hf_test
 })
+print("Conversion to Hugging Face datasets completed.")
 
 # ------------------------------
 # Step 6: Load Pre-trained CodeT5 Model & Tokenizer
 # ------------------------------
+print("Step 6: Loading pre-trained CodeT5 model and tokenizer...")
 model_checkpoint = "Salesforce/codet5-small"
 model = T5ForConditionalGeneration.from_pretrained(model_checkpoint)
 tokenizer = RobertaTokenizer.from_pretrained(model_checkpoint)
+print("Model and tokenizer loaded successfully.")
 
 # ------------------------------
 # Step 7: Tokenize the Dataset
 # ------------------------------
+print("Step 7: Tokenizing the dataset...")
+
 def preprocess_function(examples):
     inputs = examples["masked_input"]
     targets = examples["target"]
@@ -116,10 +121,12 @@ def preprocess_function(examples):
     return model_inputs
 
 tokenized_datasets = dataset.map(preprocess_function, batched=True)
+print("Tokenization completed.")
 
 # ------------------------------
 # Step 8: Training Arguments & Trainer Setup
 # ------------------------------
+print("Step 8: Setting up training arguments and the trainer...")
 training_args = TrainingArguments(
     output_dir="../data/interim/codet5-finetuned",
     evaluation_strategy="epoch",
@@ -149,21 +156,27 @@ trainer = Trainer(
     tokenizer=tokenizer,
     callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]
 )
+print("Trainer setup completed.")
 
 # ------------------------------
 # Step 9: Train the Model
 # ------------------------------
+print("Step 9: Starting model training...")
 trainer.train()
+print("Model training completed.")
 
 # ------------------------------
 # Step 10: Evaluate on Test Set
 # ------------------------------
+print("Step 10: Evaluating the model on the test set...")
 metrics = trainer.evaluate(tokenized_datasets["test"])
 print("Test Evaluation Metrics:", metrics)
+print("Evaluation completed.")
 
 # ------------------------------
 # Step 11: Generate Predictions and Save Results with CodeBLEU Scores
 # ------------------------------
+print("Step 11: Generating predictions and calculating CodeBLEU scores...")
 sacrebleu_metric = evaluate.load("sacrebleu")
 
 results = []
@@ -174,26 +187,20 @@ for i, row in masked_test_df.iterrows():
     input_text = row["masked_input"]
     expected_if = row["target"]
 
-    # Generate predicted condition
     inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True).to(model.device)
     outputs = model.generate(**inputs, max_length=128)
     predicted_if = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
 
-    # Reconstruct the full function with the predicted if condition inserted.
-    # IMPORTANT: Flatten the original function so that both reference and hypothesis have the same format.
     reference_full = flatten_code(row['original_function'])
     hypothesis_full = input_text.replace('<mask>:', predicted_if + ':')
 
-    # Save to lists for CodeBLEU evaluation
     refs_list.append(reference_full.strip())
     hyps_list.append(hypothesis_full.strip())
 
-    # Compute BLEU-4 for this individual sample
     exact_match = (predicted_if.strip() == expected_if.strip())
     bleu_result = sacrebleu_metric.compute(predictions=[predicted_if], references=[[expected_if]])
     bleu_score = bleu_result["score"]
 
-    # For now, set codebleu score to None; we update it below.
     results.append({
         "Input function with masked if condition": input_text,
         "Whether the prediction is correct": exact_match,
@@ -202,11 +209,11 @@ for i, row in masked_test_df.iterrows():
         "CodeBLEU prediction score": None,
         "BLEU-4 prediction score": bleu_score
     })
+    if i % 10 == 0:
+        print(f"Generated predictions for {i} rows.")
 
 results_df = pd.DataFrame(results)
 
-# Write all references and hypotheses to files for CodeBLEU evaluation
-# We write them to /content/ to mimic your working example.
 refs_path = "../models/all_targets.txt"
 hyps_path = "../models/all_predictions.txt"
 
@@ -215,8 +222,6 @@ with open(refs_path, "w") as f_ref, open(hyps_path, "w") as f_pred:
         f_ref.write(ref + "\n")
         f_pred.write(hyp + "\n")
 
-# Build the command to run the CodeBLEU evaluator.
-# Adjust the --lang flag as needed (here, we assume Python code evaluation).
 cmd = (
     "cd ../data/external/CodeXGLUE/Code-Code/code-to-code-trans/evaluator/CodeBLEU/ && "
     f"python calc_code_bleu.py --refs ../models/all_targets.txt --hyp ../models/all_predictions.txt --lang python --params 0.25,0.25,0.25,0.25"
@@ -226,21 +231,11 @@ result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subproce
 output = result.stdout.strip() if result.stdout.strip() else result.stderr.strip()
 print("CodeBLEU evaluator output:\n", output)
 
-# Parse the CodeBLEU score from the evaluator output.
 m = re.search(r"CodeBLEU score:\s+([0-9.]+)", output)
 global_codebleu_score = float(m.group(1)) if m else 0.0
 
-# Update the results DataFrame with the global CodeBLEU score.
 results_df["CodeBLEU prediction score"] = global_codebleu_score
 
 results_df.to_csv("../models/testset-results.csv", index=False)
 print("Test set results saved as 'testset-results.csv'.")
-
-results_df.head()
-
-masked_train_df.loc[49712]
-
-df_no_mask = masked_train_df[~masked_train_df['masked_input'].str.contains("<mask>")]
-
-df_no_mask
-
+print("Fine-tuning pipeline completed.")
