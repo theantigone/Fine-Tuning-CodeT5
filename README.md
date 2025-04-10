@@ -38,6 +38,13 @@ For macOS/Linux:
 (venv) ~/Fine-Tuning-CodeT5 $ 
 ```
 
+For Windows:
+```shell
+~/Fine-Tuning-CodeT5 $ python -m venv ./venv/
+~/Fine-Tuning-CodeT5 $ source venv/bin/Activate.ps1
+(venv) ~/Fine-Tuning-CodeT5 $
+```
+
 To deactivate the virtual environment, use the command:
 ```shell
 (venv) $ deactivate
