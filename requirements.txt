@@ -16,3 +16,4 @@ sacrebleu
 pandas
 
 transformers[torch]
+scikit-learn
