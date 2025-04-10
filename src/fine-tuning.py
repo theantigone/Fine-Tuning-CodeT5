@@ -19,6 +19,8 @@ from transformers import T5ForConditionalGeneration, RobertaTokenizer, Trainer, 
 from datasets import Dataset, DatasetDict
 import evaluate
 
+from sklearn.metrics import f1_score
+
 print("Starting the fine-tuning pipeline...")
 
 # ------------------------------
@@ -179,6 +181,11 @@ print("Evaluation completed.")
 print("Step 11: Generating predictions and calculating CodeBLEU scores...")
 sacrebleu_metric = evaluate.load("sacrebleu")
 
+# Calculate F1 score
+print("Calculating F1 Score...")
+predictions = []
+true_labels = []
+
 results = []
 refs_list = []
 hyps_list = []
@@ -191,6 +198,9 @@ for i, row in masked_test_df.iterrows():
     outputs = model.generate(**inputs, max_length=128)
     predicted_if = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
 
+    predictions.append(predicted_if)
+    true_labels.append(expected_if)
+
     reference_full = flatten_code(row['original_function'])
     hypothesis_full = input_text.replace('<mask>:', predicted_if + ':')
 
@@ -201,16 +211,26 @@ for i, row in masked_test_df.iterrows():
     bleu_result = sacrebleu_metric.compute(predictions=[predicted_if], references=[[expected_if]])
     bleu_score = bleu_result["score"]
 
+    # Convert predictions and true labels into binary or categorical format if necessary
+    # For simplicity, this assumes direct comparison of string labels.
+    f1 = f1_score([expected_if], [predicted_if], average='weighted')  # Use 'macro' or other averaging as needed
+    print(f"Weighted F1 Score: {f1}")
+
     results.append({
         "Input function with masked if condition": input_text,
         "Whether the prediction is correct": exact_match,
         "Expected if condition": expected_if,
         "Predicted if condition": predicted_if,
         "CodeBLEU prediction score": None,
-        "BLEU-4 prediction score": bleu_score
+        "BLEU-4 prediction score": bleu_score,
+        "F1 Score": f1
     })
     if i % 10 == 0:
         print(f"Generated predictions for {i} rows.")
+
+# Calculate overall F1 score for all predictions and true labels
+overall_f1 = f1_score(true_labels, predictions, average='weighted')
+print(f"Overall Weighted F1 Score: {overall_f1}")
 
 results_df = pd.DataFrame(results)
 
