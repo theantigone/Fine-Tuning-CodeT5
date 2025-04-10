@@ -129,7 +129,7 @@ print("Tokenization completed.")
 print("Step 8: Setting up training arguments and the trainer...")
 training_args = TrainingArguments(
     output_dir="../data/interim/codet5-finetuned",
-    evaluation_strategy="epoch",
+    eval_strategy="epoch",
     save_strategy="epoch",
     logging_dir="../data/logs",
     learning_rate=5e-5,
