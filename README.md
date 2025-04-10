@@ -40,8 +40,8 @@ For macOS/Linux:
 
 For Windows:
 ```shell
-~/Fine-Tuning-CodeT5 $ python -m venv ./venv/
-~/Fine-Tuning-CodeT5 $ source venv/bin/Activate.ps1
+~/Fine-Tuning-CodeT5 $ python -m venv .\venv\
+~/Fine-Tuning-CodeT5 $ .\venv\bin\Activate.ps1
 (venv) ~/Fine-Tuning-CodeT5 $
 ```
 
